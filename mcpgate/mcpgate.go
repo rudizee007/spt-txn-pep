@@ -77,8 +77,8 @@ func (e *Enforcer) Authorize(c ToolCall) Result {
 	entry, _ := e.Log.Append(e.RKey, translog.Decision(d.Class), d.Binding, e.now().Unix())
 	h := entry.Record.Hash()
 	return Result{
-		Class:   d.Class,
-		Reason:  d.Reason,
+		Class:    d.Class,
+		Reason:   d.Reason,
 		LogEntry: fmt.Sprintf("%d:%x", entry.Record.Seq, h[:6]),
 	}
 }

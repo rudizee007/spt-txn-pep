@@ -19,6 +19,16 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: false
+      # gofmt -l lists offending files but exits 0, so it must be asserted
+      # explicitly or an unformatted file sails through a && chain unnoticed.
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::not gofmt-clean:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
       - run: go vet ./...
       - run: go build ./...
       - run: go test ./... -count=1 -race
