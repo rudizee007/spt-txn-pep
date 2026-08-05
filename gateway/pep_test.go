@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rudizee007/spt-txn-pep/evidence"
 	"github.com/rudizee007/spt-txn-pep/gate"
 	"github.com/rudizee007/spt-txn-pep/translog"
 )
@@ -45,7 +46,7 @@ func fixedReq() gate.PaymentRequirements {
 func newPEP(pol gate.PolicyVerifier, now time.Time) (*PEP, *translog.Log) {
 	_, rk, _ := ed25519.GenerateKey(nil)
 	log := translog.NewLog(rk.Public().(ed25519.PublicKey))
-	return &PEP{
+	pep, err := NewPEP(PEP{
 		Allowlist:    gate.Allowlist{Schemes: map[string]byte{"exact": 1}, Networks: map[string]byte{"solana:devnet": 2}},
 		Policy:       pol,
 		Spend:        gate.NewMemSpendLog(),
@@ -53,7 +54,13 @@ func newPEP(pol gate.PolicyVerifier, now time.Time) (*PEP, *translog.Log) {
 		RKey:         rk,
 		Requirements: func(*http.Request) gate.PaymentRequirements { return fixedReq() },
 		Now:          func() time.Time { return now },
-	}, log
+		Evidence:     evidence.None{},
+		Name:         "pep.test",
+	})
+	if err != nil {
+		panic(err)
+	}
+	return pep, log
 }
 
 var protected = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
