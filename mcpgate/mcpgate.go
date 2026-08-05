@@ -16,8 +16,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/rudizee007/spt-txn-x402-solana/gate"
-	"github.com/rudizee007/spt-txn-x402-solana/receipt"
+	"github.com/rudizee007/spt-txn-pep/gate"
+	"github.com/rudizee007/spt-txn-pep/receipt"
 )
 
 // ToolCall is an agent's requested payment tool-call, plus the single-use

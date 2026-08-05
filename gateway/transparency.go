@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rudizee007/spt-txn-x402-solana/receipt"
+	"github.com/rudizee007/spt-txn-pep/receipt"
 )
 
 // Transparency serves the receipt log read-only: the current Merkle root (the

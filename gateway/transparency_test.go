@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/rudizee007/spt-txn-x402-solana/receipt"
+	"github.com/rudizee007/spt-txn-pep/receipt"
 )
 
 func TestTransparencyRootAndProof(t *testing.T) {

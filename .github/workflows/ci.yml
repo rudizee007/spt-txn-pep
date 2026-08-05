@@ -1,0 +1,79 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: build · vet · test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: false
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go test ./... -count=1 -race
+
+  no-dependencies:
+    name: zero-dependency invariant
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: false
+
+      # This module's value is that adopting an enforcement point costs you
+      # nothing in dependency graph, vulnerability surface or supply-chain
+      # review. That is only true while it stays true — so it is a CI gate, not
+      # a README claim. These packages were extracted precisely because they had
+      # been trapped in a module requiring a blockchain SDK and a Mongo driver.
+      - name: go.mod must have no require block
+        run: |
+          if grep -qE '^\s*require' go.mod; then
+            echo "::error::a dependency was added to a module that must have none" >&2
+            grep -nE '^\s*require' -A5 go.mod >&2
+            exit 1
+          fi
+          echo "confirmed: zero third-party dependencies"
+
+      - name: go mod tidy introduces nothing
+        run: |
+          cp go.mod /tmp/go.mod.orig
+          go mod tidy
+          diff -u /tmp/go.mod.orig go.mod || {
+            echo "::error::go mod tidy changed go.mod — commit the tidied file" >&2
+            exit 1
+          }
+          test ! -s go.sum 2>/dev/null || {
+            echo "::error::go.sum is non-empty; this module should need none" >&2
+            exit 1
+          }
+
+  security:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: false
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          "$(go env GOPATH)"/bin/govulncheck ./...
+
+# TODO(supply-chain): pin these actions to commit SHAs — tag refs are mutable.
+#   go install github.com/suzuki-shunsuke/pinact/cmd/pinact@latest
+#   pinact run .github/workflows/*.yml

@@ -1,0 +1,22 @@
+SPT-Txn — enforcement points (HTTP PEP, MCP PEP, gate, receipt)
+Copyright 2026 Rudolf J. Coetzee / Violet Sky Security SEZC
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Extracted 2026-07-29 from github.com/rudizee007/spt-txn-x402-solana, preserving
+commit history. These packages are chain-agnostic and depend on nothing outside
+the Go standard library; the dependency direction runs from chain-specific
+consumers to this module and never back.
+
+Enforcement points are intentionally free and open: running one should cost
+nothing. The commercial boundary is operating a fleet of them and proving
+compliance with them — control plane, aggregation, retention, control mappings.
+Security features are never gated.
+
+Specification: draft-coetzee-oauth-spt-txn-tokens-03
+  https://datatracker.ietf.org/doc/draft-coetzee-oauth-spt-txn-tokens/
+Reference implementation: https://github.com/rudizee007/spt-txn-poc
+
+No third-party dependencies. No copyleft (GPL/LGPL/MPL) code is present.
+
+STATUS: proof of concept. Not externally audited. Not for production use.

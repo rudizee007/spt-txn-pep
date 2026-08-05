@@ -17,8 +17,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/rudizee007/spt-txn-x402-solana/gate"
-	"github.com/rudizee007/spt-txn-x402-solana/receipt"
+	"github.com/rudizee007/spt-txn-pep/gate"
+	"github.com/rudizee007/spt-txn-pep/receipt"
 )
 
 // Header names for the presented authorization and the emitted receipt tag.
