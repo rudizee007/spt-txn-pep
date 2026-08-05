@@ -1,4 +1,4 @@
-package receipt
+package translog
 
 import (
 	"bytes"
@@ -87,10 +87,10 @@ func TestSaveOmitsPrivateKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bytes.Contains(buf.Bytes(), []byte(hexOf(priv.Seed()))) {
-		t.Fatal("serialized log contains the receipt-signing seed")
+		t.Fatal("serialized log contains the log-signing seed")
 	}
 	if bytes.Contains(buf.Bytes(), []byte(hexOf(priv))) {
-		t.Fatal("serialized log contains the receipt-signing private key")
+		t.Fatal("serialized log contains the log-signing private key")
 	}
 	for _, k := range []string{"priv", "secret", "seed"} {
 		if strings.Contains(strings.ToLower(buf.String()), k) {
@@ -139,17 +139,17 @@ func TestSaveOverwritesAtomically(t *testing.T) {
 	}
 }
 
-// Editing a committed receipt breaks its signature; the file must not load.
+// Editing a committed record breaks its signature; the file must not load.
 func TestLoadRejectsEditedReceipt(t *testing.T) {
 	l, _ := threeReceiptLog(t)
 	f := decodeToFile(t, l)
 	f.Entries[0].Binding = strings.Repeat("99", 32)
 	if _, err := ReadLog(bytes.NewReader(encode(t, f))); err == nil {
-		t.Fatal("an edited receipt must not load")
+		t.Fatal("an edited record must not load")
 	}
 }
 
-// Dropping the last receipt leaves every remaining signature valid and the chain
+// Dropping the last record leaves every remaining signature valid and the chain
 // intact — only the recomputed root catches it. This is the case the Root field
 // exists for.
 func TestLoadRejectsTruncation(t *testing.T) {
@@ -167,7 +167,7 @@ func TestLoadRejectsTruncation(t *testing.T) {
 	}
 }
 
-// A rewritten root with untouched receipts must also be caught.
+// A rewritten root with untouched records must also be caught.
 func TestLoadRejectsForgedRoot(t *testing.T) {
 	l, _ := threeReceiptLog(t)
 	f := decodeToFile(t, l)
@@ -179,7 +179,7 @@ func TestLoadRejectsForgedRoot(t *testing.T) {
 }
 
 // Swapping the verifying key so a forged log "verifies" against an attacker key
-// still fails, because the receipts were signed by the original key.
+// still fails, because the records were signed by the original key.
 func TestLoadRejectsSwappedPubKey(t *testing.T) {
 	l, _ := threeReceiptLog(t)
 	other, _, err := ed25519.GenerateKey(nil)
@@ -193,7 +193,7 @@ func TestLoadRejectsSwappedPubKey(t *testing.T) {
 	}
 }
 
-// Reordering receipts breaks the sequence numbers and the hash chain.
+// Reordering records breaks the sequence numbers and the hash chain.
 func TestLoadRejectsReordering(t *testing.T) {
 	l, _ := threeReceiptLog(t)
 	f := decodeToFile(t, l)
@@ -232,7 +232,7 @@ func TestLoadRejectsCountMismatch(t *testing.T) {
 
 // Malformed input is rejected, not panicked on.
 func TestLoadRejectsGarbage(t *testing.T) {
-	for _, in := range []string{"", "{", "null", "[]", `{"format":"spt-txn/receipt-log/v1"}`, `{"format":"spt-txn/receipt-log/v1","layout":1,"pubkey":"zz","root":"","count":0,"entries":[]}`} {
+	for _, in := range []string{"", "{", "null", "[]", `{"format":"spt-txn/translog/v1"}`, `{"format":"spt-txn/translog/v1","layout":1,"pubkey":"zz","root":"","count":0,"entries":[]}`} {
 		if _, err := ReadLog(strings.NewReader(in)); err == nil {
 			t.Fatalf("input %q must not load", in)
 		}

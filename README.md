@@ -11,15 +11,23 @@ pep := &gateway.PEP{ /* ... */ }
 http.ListenAndServe(":8080", pep.Wrap(yourHandler))
 ```
 
-Every request is authorized against a declared transaction, a signed receipt is
-emitted, and the request reaches the protected resource **only on ALLOW**.
+Every request is authorized against a declared transaction, a signed
+transparency-log entry is emitted, and the request reaches the protected resource
+**only on ALLOW**.
+
+> ⚠️ **Conformance gap, being fixed.** The IETF draft requires a PEP to emit a
+> **Transaction Receipt** — a JSON object carrying PEP identity, decision class,
+> rule path, policy hash, jurisdiction and nonce. This module currently emits a
+> `translog` entry, which is the *transparency-log* half of that specification
+> section, not the receipt. The receipt implementation lives in `spt-txn-poc`
+> and is not yet reachable from here. See `translog`'s package documentation.
 
 ## What's here
 
 | Package | What it does |
 |---|---|
 | `gate` | The decision core: offline intent binding, `ALLOW` / `DENY_VIOLATION` / `DENY_UNAVAILABLE` |
-| `receipt` | Signed receipts + an RFC 6962 Merkle transparency log |
+|  `translog` | Hash-chained log records + RFC 6962 Merkle transparency log (**not** the spec Transaction Receipt — see package doc) |
 | `gateway` | **HTTP PEP** — `PEP.Wrap(http.Handler)` middleware, plus a transparency-log HTTP service |
 | `mcpgate` | **MCP PEP** — the same decision core enforcing agent tool calls |
 
@@ -70,7 +78,7 @@ maintainer's own analysis — not an assessment by an independent security firm.
 
 Trust-boundary changes (the decision path, intent binding, receipt signing) are
 reviewed spec-first and adversarially before merge. Please open an issue
-describing the gap before sending a PR that touches `gate` or `receipt`.
+describing the gap before sending a PR that touches `gate` or `translog`.
 
 **Do not add a third-party dependency to this module without discussion.** The
 absence of one is a feature, not an oversight.

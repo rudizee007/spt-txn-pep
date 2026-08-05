@@ -1,4 +1,4 @@
-package receipt
+package translog
 
 import (
 	"crypto/ed25519"
@@ -40,7 +40,7 @@ func TestLogAppendChainAndRoot(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !VerifyInclusion(root, l.entries[i].Receipt.CanonicalBytes(), i, l.Len(), p) {
+		if !VerifyInclusion(root, l.entries[i].Record.CanonicalBytes(), i, l.Len(), p) {
 			t.Fatalf("inclusion proof %d failed", i)
 		}
 	}
@@ -59,7 +59,7 @@ func TestLogTamperDetected(t *testing.T) {
 	if _, err := l.Append(priv, Allow, b32(0x22), 2); err != nil {
 		t.Fatal(err)
 	}
-	l.entries[0].Receipt.Binding = b32(0x99) // tamper after the fact
+	l.entries[0].Record.Binding = b32(0x99) // tamper after the fact
 	if err := l.Verify(); err == nil {
 		t.Fatal("tampered log must fail Verify")
 	}

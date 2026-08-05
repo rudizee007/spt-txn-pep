@@ -1,4 +1,4 @@
-package receipt
+package translog
 
 import (
 	"crypto/sha256"
@@ -11,7 +11,7 @@ import (
 // on the largest power of two below n, which avoids the duplicate-leaf ambiguity
 // (CVE-2012-2459). SHA-256 only — no custom cryptography.
 
-var errIndexRange = errors.New("receipt: leaf index out of range")
+var errIndexRange = errors.New("translog: leaf index out of range")
 
 func leafHash(data []byte) [32]byte {
 	h := sha256.New()

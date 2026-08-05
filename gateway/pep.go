@@ -1,9 +1,12 @@
 // Package gateway is a drop-in x402 authorization enforcement point (PEP): wrap
 // any http.Handler and it enforces the SPT-Txn decision on every request, emits a
-// signed receipt, and forwards to the protected resource only on ALLOW. It also
-// serves the receipt transparency log (transparency.go).
+// signed transparency-log entry, and forwards to the protected resource only on
+// ALLOW. It also serves the transparency log read-only (transparency.go).
 //
-// It is built entirely on the gate + receipt packages — no new trust-boundary
+// NOTE: a log entry is NOT the Transaction Receipt of draft-coetzee-oauth-spt-txn-
+// tokens-03. See the translog package doc.
+//
+// It is built entirely on the gate + translog packages — no new trust-boundary
 // code. The middleware is the adoption surface: any x402 resource server adds
 // per-transaction authorization and a tamper-evident audit trail with one Wrap().
 package gateway
@@ -18,13 +21,13 @@ import (
 	"time"
 
 	"github.com/rudizee007/spt-txn-pep/gate"
-	"github.com/rudizee007/spt-txn-pep/receipt"
+	"github.com/rudizee007/spt-txn-pep/translog"
 )
 
-// Header names for the presented authorization and the emitted receipt tag.
+// Header names for the presented authorization and the emitted log-entry tag.
 const (
-	HeaderToken   = "X-SPT-Txn"
-	HeaderReceipt = "X-SPT-Txn-Receipt"
+	HeaderToken    = "X-SPT-Txn"
+	HeaderLogEntry = "X-SPT-Txn-Log-Entry"
 )
 
 // presentedToken is the SPT-Txn authorization a client presents, carried in the
@@ -47,7 +50,7 @@ type PEP struct {
 	Allowlist gate.Allowlist
 	Policy    gate.PolicyVerifier
 	Spend     gate.SpendLog
-	Log       *receipt.Log
+	Log       *translog.Log
 	RKey      ed25519.PrivateKey
 	// Requirements returns the x402 PaymentRequirements this resource demands for
 	// a given request (asset, payTo, amount, resource...).
@@ -64,7 +67,7 @@ func (p *PEP) now() time.Time {
 }
 
 // Wrap returns middleware that enforces the gate on each request and forwards to
-// next only on ALLOW. Every decision (ALLOW or DENY) emits a signed receipt.
+// next only on ALLOW. Every decision (ALLOW or DENY) emits a signed log entry.
 func (p *PEP) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tok, ok := parseToken(r.Header.Get(HeaderToken))
@@ -75,12 +78,12 @@ func (p *PEP) Wrap(next http.Handler) http.Handler {
 		req := p.Requirements(r)
 		d := gate.Evaluate(p.Allowlist, req, tok, p.Policy, p.Spend, p.now())
 
-		// Evidence as a byproduct: a signed, chained receipt for every decision.
-		entry, _ := p.Log.Append(p.RKey, receipt.Decision(d.Class), d.Binding, p.now().Unix())
+		// Evidence as a byproduct: a signed, chained log entry for every decision.
+		entry, _ := p.Log.Append(p.RKey, translog.Decision(d.Class), d.Binding, p.now().Unix())
 
 		switch d.Class {
 		case gate.Allow:
-			w.Header().Set(HeaderReceipt, receiptTag(entry))
+			w.Header().Set(HeaderLogEntry, logEntryTag(entry))
 			next.ServeHTTP(w, r)
 		case gate.DenyUnavailable:
 			http.Error(w, "authorization unavailable: "+d.Reason, http.StatusServiceUnavailable)
@@ -112,9 +115,9 @@ func parseToken(h string) (gate.Token, bool) {
 	return t, true
 }
 
-// receiptTag is a compact locator for the emitted receipt in the transparency
+// logEntryTag is a compact locator for the emitted entry in the transparency
 // log: its sequence number plus a hash prefix.
-func receiptTag(e receipt.Entry) string {
-	h := e.Receipt.Hash()
-	return fmt.Sprintf("%d:%s", e.Receipt.Seq, hex.EncodeToString(h[:8]))
+func logEntryTag(e translog.Entry) string {
+	h := e.Record.Hash()
+	return fmt.Sprintf("%d:%s", e.Record.Seq, hex.EncodeToString(h[:8]))
 }

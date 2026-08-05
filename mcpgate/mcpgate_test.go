@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/rudizee007/spt-txn-pep/gate"
-	"github.com/rudizee007/spt-txn-pep/receipt"
+	"github.com/rudizee007/spt-txn-pep/translog"
 )
 
 func b32(x byte) [32]byte {
@@ -34,7 +34,7 @@ func setup() (e *Enforcer, asset, merchant string) {
 		Allowlist: gate.Allowlist{Schemes: map[string]byte{"exact": 1}, Networks: map[string]byte{"solana:devnet": 2}},
 		Policy:    ExactPayment{Asset: asset, PayTo: merchant, Resource: "invoice:42", MaxAmount: 1_000_000},
 		Spend:     gate.NewMemSpendLog(),
-		Log:       receipt.NewLog(rk.Public().(ed25519.PublicKey)),
+		Log:       translog.NewLog(rk.Public().(ed25519.PublicKey)),
 		RKey:      rk,
 		Now:       func() time.Time { return time.Unix(1000, 0) },
 	}

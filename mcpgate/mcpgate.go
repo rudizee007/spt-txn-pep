@@ -1,12 +1,12 @@
 // Package mcpgate enforces SPT-Txn authorization on AI-agent tool-calls — the
 // MCP policy-enforcement-point profile. It reuses the exact gate decision and
-// receipt log that the HTTP x402 PEP uses (package gateway): one trust-boundary
+// transparency log that the HTTP x402 PEP uses (package gateway): one trust-boundary
 // core, two transports (HTTP requests and MCP tool-calls). A hijacked or
 // prompt-injected tool-call that does not match the authorized payment is
-// denied, and a signed receipt is emitted on every decision.
+// denied, and a signed transparency-log entry is emitted on every decision.
 //
 // No new trust-boundary code: the decision is gate.Evaluate and the evidence is
-// receipt.Log, unchanged from the published engine.
+// translog.Log, unchanged from the published engine.
 package mcpgate
 
 import (
@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/rudizee007/spt-txn-pep/gate"
-	"github.com/rudizee007/spt-txn-pep/receipt"
+	"github.com/rudizee007/spt-txn-pep/translog"
 )
 
 // ToolCall is an agent's requested payment tool-call, plus the single-use
@@ -33,23 +33,23 @@ type ToolCall struct {
 
 // Result is the enforcement outcome for one tool-call.
 type Result struct {
-	Class   gate.DecisionClass
-	Reason  string
-	Receipt string // locator (seq:hashPrefix) in the transparency log
+	Class    gate.DecisionClass
+	Reason   string
+	LogEntry string // locator (seq:hashPrefix) in the transparency log
 }
 
 // Allowed reports whether the tool-call may proceed.
 func (r Result) Allowed() bool { return r.Class == gate.Allow }
 
 // Enforcer is the MCP-side policy-enforcement point. It shares the gate +
-// receipt core with the HTTP PEP; only the transport differs.
+// translog core with the HTTP PEP; only the transport differs.
 type Enforcer struct {
 	Scheme    string
 	Network   string
 	Allowlist gate.Allowlist
 	Policy    gate.PolicyVerifier
 	Spend     gate.SpendLog
-	Log       *receipt.Log
+	Log       *translog.Log
 	RKey      ed25519.PrivateKey
 	Now       func() time.Time // injectable for tests; defaults to time.Now
 }
@@ -61,7 +61,7 @@ func (e *Enforcer) now() time.Time {
 	return time.Now()
 }
 
-// Authorize decides ALLOW/DENY for a tool-call and emits a signed receipt on
+// Authorize decides ALLOW/DENY for a tool-call and emits a signed log entry on
 // every path. It never performs the payment; ALLOW means the caller may proceed.
 func (e *Enforcer) Authorize(c ToolCall) Result {
 	pr := gate.PaymentRequirements{
@@ -74,12 +74,12 @@ func (e *Enforcer) Authorize(c ToolCall) Result {
 	}
 	tok := gate.Token{Nonce: c.Nonce, Expiry: c.Expiry}
 	d := gate.Evaluate(e.Allowlist, pr, tok, e.Policy, e.Spend, e.now())
-	entry, _ := e.Log.Append(e.RKey, receipt.Decision(d.Class), d.Binding, e.now().Unix())
-	h := entry.Receipt.Hash()
+	entry, _ := e.Log.Append(e.RKey, translog.Decision(d.Class), d.Binding, e.now().Unix())
+	h := entry.Record.Hash()
 	return Result{
 		Class:   d.Class,
 		Reason:  d.Reason,
-		Receipt: fmt.Sprintf("%d:%x", entry.Receipt.Seq, h[:6]),
+		LogEntry: fmt.Sprintf("%d:%x", entry.Record.Seq, h[:6]),
 	}
 }
 

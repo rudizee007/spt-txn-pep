@@ -1,12 +1,12 @@
 # `gateway/` — drop-in x402 authorization (PEP) + transparency log
 
-Two adoption-surface pieces, both thin wrappers over the proven `gate` + `receipt`
+Two adoption-surface pieces, both thin wrappers over the proven `gate` + `translog`
 packages — no new trust-boundary code.
 
 ## PEP middleware (`pep.go`)
 
 Wrap any `http.Handler` and it enforces the SPT-Txn decision on every request,
-emits a signed receipt, and forwards to the protected resource **only on ALLOW**.
+emits a signed transparency-log entry, and forwards to the protected resource **only on ALLOW**.
 
 ```go
 pep := &gateway.PEP{
@@ -32,16 +32,16 @@ per-transaction authorization model is enforced at the edge.
 
 ## Transparency log (`transparency.go`)
 
-Serves the receipt log read-only — the "compliance evidence as a service" surface:
+Serves the transparency log read-only — the "compliance evidence as a service" surface:
 
 ```
 GET /transparency/root          -> { size, merkle_root }
-GET /transparency/receipt/{seq} -> { seq, size, root, leaf, proof, verified }
+GET /transparency/entry/{seq} -> { seq, size, root, leaf, proof, verified }
 ```
 
 The `merkle_root` is the value anchored on-chain (see `cmd/anchordevnet`). An
 auditor fetches the root, then proves any single decision belongs to it via its
-inclusion proof — without seeing the other receipts.
+inclusion proof — without seeing the other entries.
 
 ## Run the demo
 

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/rudizee007/spt-txn-pep/gate"
-	"github.com/rudizee007/spt-txn-pep/receipt"
+	"github.com/rudizee007/spt-txn-pep/translog"
 )
 
 func b32(x byte) [32]byte {
@@ -42,9 +42,9 @@ func fixedReq() gate.PaymentRequirements {
 	}
 }
 
-func newPEP(pol gate.PolicyVerifier, now time.Time) (*PEP, *receipt.Log) {
+func newPEP(pol gate.PolicyVerifier, now time.Time) (*PEP, *translog.Log) {
 	_, rk, _ := ed25519.GenerateKey(nil)
-	log := receipt.NewLog(rk.Public().(ed25519.PublicKey))
+	log := translog.NewLog(rk.Public().(ed25519.PublicKey))
 	return &PEP{
 		Allowlist:    gate.Allowlist{Schemes: map[string]byte{"exact": 1}, Networks: map[string]byte{"solana:devnet": 2}},
 		Policy:       pol,
@@ -84,7 +84,7 @@ func TestPEP_AllowForwards(t *testing.T) {
 	if code != http.StatusOK || body != "PREMIUM" {
 		t.Fatalf("expected 200 PREMIUM, got %d %q", code, body)
 	}
-	if hdr.Get(HeaderReceipt) == "" {
+	if hdr.Get(HeaderLogEntry) == "" {
 		t.Fatal("expected a receipt header on ALLOW")
 	}
 	if log.Len() != 1 {

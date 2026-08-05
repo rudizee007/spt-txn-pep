@@ -7,15 +7,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rudizee007/spt-txn-pep/receipt"
+	"github.com/rudizee007/spt-txn-pep/translog"
 )
 
-// Transparency serves the receipt log read-only: the current Merkle root (the
-// value anchored on-chain) and a per-receipt inclusion proof. An auditor fetches
+// Transparency serves the transparency log read-only: the current Merkle root (the
+// value anchored on-chain) and a per-entry inclusion proof. An auditor fetches
 // the root, then proves any single decision belongs to it without seeing the
 // others — the "compliance evidence as a service" surface.
 type Transparency struct {
-	Log *receipt.Log
+	Log *translog.Log
 }
 
 type rootResp struct {
@@ -27,7 +27,7 @@ type proofResp struct {
 	Seq      int      `json:"seq"`
 	Size     int      `json:"size"`
 	Root     string   `json:"merkle_root"`
-	Leaf     string   `json:"leaf_hex"` // canonical receipt bytes
+	Leaf     string   `json:"leaf_hex"` // canonical log-entry bytes
 	Proof    []string `json:"proof"`    // audit path, bottom-up (hex)
 	Verified bool     `json:"verified"`
 }
@@ -35,7 +35,7 @@ type proofResp struct {
 // Handler returns the transparency endpoints:
 //
 //	GET /transparency/root          -> {size, merkle_root}
-//	GET /transparency/receipt/{seq} -> {seq, size, root, leaf, proof, verified}
+//	GET /transparency/entry/{seq} -> {seq, size, root, leaf, proof, verified}
 func (t *Transparency) Handler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -44,15 +44,15 @@ func (t *Transparency) Handler() http.Handler {
 		writeJSON(w, rootResp{Size: t.Log.Len(), Root: hex.EncodeToString(root[:])})
 	})
 
-	mux.HandleFunc("/transparency/receipt/", func(w http.ResponseWriter, r *http.Request) {
-		seq, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/transparency/receipt/"))
+	mux.HandleFunc("/transparency/entry/", func(w http.ResponseWriter, r *http.Request) {
+		seq, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/transparency/entry/"))
 		if err != nil {
 			http.Error(w, "bad sequence number", http.StatusBadRequest)
 			return
 		}
 		rec, ok := t.Log.At(seq)
 		if !ok {
-			http.Error(w, "no such receipt", http.StatusNotFound)
+			http.Error(w, "no such log entry", http.StatusNotFound)
 			return
 		}
 		proof, err := t.Log.Proof(seq)
@@ -72,7 +72,7 @@ func (t *Transparency) Handler() http.Handler {
 			Root:     hex.EncodeToString(root[:]),
 			Leaf:     hex.EncodeToString(leaf),
 			Proof:    ph,
-			Verified: receipt.VerifyInclusion(root, leaf, seq, t.Log.Len(), proof),
+			Verified: translog.VerifyInclusion(root, leaf, seq, t.Log.Len(), proof),
 		})
 	})
 

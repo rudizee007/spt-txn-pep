@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Independent reference for the SPT-Txn receipt canonicalization + the RFC 6962
+Independent reference for the SPT-Txn transparency-log record canonicalization + the RFC 6962
 Merkle tree over receipts. Used as the differential / known-answer oracle for the
 Go implementation. No third-party deps.
 
@@ -10,8 +10,8 @@ node hash can never be reinterpreted as a leaf (second-preimage safety), and the
 """
 import hashlib
 
-DOMAIN = b"spt-txn/receipt/v1"
-VERSION = 1
+DOMAIN = b"spt-txn/logentry/v1"
+VERSION = 2
 
 
 def sha(b: bytes) -> bytes:

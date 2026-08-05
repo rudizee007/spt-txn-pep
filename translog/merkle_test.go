@@ -1,4 +1,4 @@
-package receipt
+package translog
 
 import (
 	"encoding/hex"
@@ -8,17 +8,17 @@ import (
 // katLeaves rebuilds the three canonical receipts from the KAT.
 func katLeaves() [][]byte {
 	var zero [32]byte
-	r0 := Receipt{Seq: 0, Decision: Allow, Binding: b32(0x11), IssuedAt: 1_700_000_000, PrevHash: zero}
+	r0 := Record{Seq: 0, Decision: Allow, Binding: b32(0x11), IssuedAt: 1_700_000_000, PrevHash: zero}
 	h0 := r0.Hash()
-	r1 := Receipt{Seq: 1, Decision: DenyViolation, Binding: b32(0x22), IssuedAt: 1_700_000_060, PrevHash: h0}
+	r1 := Record{Seq: 1, Decision: DenyViolation, Binding: b32(0x22), IssuedAt: 1_700_000_060, PrevHash: h0}
 	h1 := r1.Hash()
-	r2 := Receipt{Seq: 2, Decision: DenyUnavailable, Binding: b32(0x33), IssuedAt: 1_700_000_120, PrevHash: h1}
+	r2 := Record{Seq: 2, Decision: DenyUnavailable, Binding: b32(0x33), IssuedAt: 1_700_000_120, PrevHash: h1}
 	return [][]byte{r0.CanonicalBytes(), r1.CanonicalBytes(), r2.CanonicalBytes()}
 }
 
 func TestMerkleRootKAT(t *testing.T) {
 	root := MerkleRoot(katLeaves())
-	if got := hex.EncodeToString(root[:]); got != "b6b6247d745e97d44bc631fdd07f85c25db12484e11c90adfc66799176a2b9f9" {
+	if got := hex.EncodeToString(root[:]); got != "5c520a777da3f47124aff92c7930e00d8ed4f58ae0e34dd88eee741912804625" {
 		t.Fatalf("root = %s", got)
 	}
 }
@@ -31,8 +31,8 @@ func TestInclusionProofKAT(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"0a7004f3c766ade48967801abca30db19fbf5fc55ce07cbef162c27b1d5b9545",
-		"0ce5460ec63c5cd09dccaa84d927c04e85ef2f2e937460bdffb1fc1792386631",
+		"5387b131ab1a290b522d700c8e46535b415ddf2c28a3e0286b7d59c62a42dbe9",
+		"9b0fe2dc0fac75c79be3cf7a0c27504e35816086e4b1b3cb8dc90cd07503a1b6",
 	}
 	if len(p) != len(want) {
 		t.Fatalf("proof length = %d", len(p))

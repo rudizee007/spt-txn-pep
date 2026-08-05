@@ -8,19 +8,19 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/rudizee007/spt-txn-pep/receipt"
+	"github.com/rudizee007/spt-txn-pep/translog"
 )
 
 func TestTransparencyRootAndProof(t *testing.T) {
 	_, rk, _ := ed25519.GenerateKey(nil)
-	log := receipt.NewLog(rk.Public().(ed25519.PublicKey))
-	if _, err := log.Append(rk, receipt.Allow, b32(0x11), 1); err != nil {
+	log := translog.NewLog(rk.Public().(ed25519.PublicKey))
+	if _, err := log.Append(rk, translog.Allow, b32(0x11), 1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := log.Append(rk, receipt.DenyViolation, b32(0x22), 2); err != nil {
+	if _, err := log.Append(rk, translog.DenyViolation, b32(0x22), 2); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := log.Append(rk, receipt.Allow, b32(0x33), 3); err != nil {
+	if _, err := log.Append(rk, translog.Allow, b32(0x33), 3); err != nil {
 		t.Fatal(err)
 	}
 
@@ -41,7 +41,7 @@ func TestTransparencyRootAndProof(t *testing.T) {
 
 	// Every receipt's inclusion proof verifies against that same root.
 	for i := 0; i < 3; i++ {
-		resp, err := http.Get(ts.URL + "/transparency/receipt/" + strconv.Itoa(i))
+		resp, err := http.Get(ts.URL + "/transparency/entry/" + strconv.Itoa(i))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -57,7 +57,7 @@ func TestTransparencyRootAndProof(t *testing.T) {
 	}
 
 	// Unknown receipt -> 404.
-	r404, err := http.Get(ts.URL + "/transparency/receipt/99")
+	r404, err := http.Get(ts.URL + "/transparency/entry/99")
 	if err != nil {
 		t.Fatal(err)
 	}
