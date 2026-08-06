@@ -81,8 +81,16 @@ func (l *Log) PublicKey() ed25519.PublicKey {
 
 // Encode serializes the log as JSON. The private key is not part of the log and
 // is therefore not written.
+//
+// The root and the entry set are captured under a SINGLE hold of l.mu, so a
+// concurrent Append cannot produce a torn snapshot — a root computed over N
+// records serialized alongside a body of N+1 records, which would reload as
+// ErrRootMismatch. The actual write to w happens after the lock is released, so
+// slow output does not block Append. (Without this, Encode read l.entries
+// locklessly; the mutex added to guard Append/Root/etc. did not cover it.)
 func (l *Log) Encode(w io.Writer) error {
-	root := l.Root()
+	l.mu.Lock()
+	root := MerkleRoot(l.canonicalLeavesLocked())
 	f := logFile{
 		Format:  FormatTransLog,
 		Layout:  LayoutVersion,
@@ -101,6 +109,8 @@ func (l *Log) Encode(w io.Writer) error {
 			Sig:      hex.EncodeToString(e.Signature),
 		}
 	}
+	l.mu.Unlock()
+
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(f)

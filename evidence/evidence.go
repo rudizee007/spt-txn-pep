@@ -96,8 +96,33 @@ type Emitter interface {
 //
 // Using None in production means the deployment is not conformant with
 // draft-03, which requires a receipt at every decision. That is a deliberate,
-// visible choice.
+// visible choice — and, via the Noop marker below, a *detectable* one: a PEP can
+// tell it was handed None and surface non-conformance rather than looking
+// identical to a real emitter at runtime.
 type None struct{}
 
 // Emit discards the receipt and reports success.
 func (None) Emit(Receipt) (string, error) { return "", nil }
+
+// noopEmitter marks None as a deliberate no-op. The method is unexported so only
+// this package can claim it — an external emitter cannot accidentally be treated
+// as a no-op, and real emitters never implement it.
+func (None) noopEmitter() {}
+
+// Noop is implemented only by Emitters that deliberately record nothing (None).
+// A PEP type-asserts for it to detect the non-conformant "no receipts" choice
+// and surface it — so None is a *visible* opt-out, not a silent fail-open.
+//
+//	if _, ok := em.(evidence.Noop); ok { /* warn: not conformant */ }
+type Noop interface{ noopEmitter() }
+
+// Durable is an OPTIONAL capability an Emitter implements to assert that Emit
+// records durably (e.g. fsync, or a durable local buffer) BEFORE returning
+// success. A buffering or async emitter that returns nil before the receipt is
+// durable MUST return false here — the fail-closed guarantee ("an ALLOW is not
+// served unless its receipt is durably recorded") is only as strong as this.
+//
+// It is advisory: a PEP MAY warn when a non-None emitter does not implement
+// Durable (it then cannot prove durability), but the interface stays optional so
+// existing emitters keep compiling.
+type Durable interface{ Durable() bool }

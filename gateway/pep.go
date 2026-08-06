@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -69,6 +70,14 @@ type PEP struct {
 	Requirements func(*http.Request) gate.PaymentRequirements
 	// Now is injectable for tests; defaults to time.Now.
 	Now func() time.Time
+	// Logf, if set, receives evidence-failure alarms and non-conformance
+	// warnings; defaults to log.Printf. A library should not hardcode the global
+	// logger, but it must still be able to shout when the audit path breaks.
+	Logf func(format string, args ...any)
+
+	// nonConformant is set by NewPEP when Evidence is a no-op (evidence.None).
+	// Surfaced via Conformant(). Not caller-settable in any meaningful way.
+	nonConformant bool
 }
 
 // NewPEP validates a PEP's configuration and returns it ready to Wrap.
@@ -94,7 +103,32 @@ func NewPEP(p PEP) (*PEP, error) {
 	case p.Name == "":
 		return nil, errors.New("gateway: empty Name — receipts must identify their PEP")
 	}
-	return &p, nil
+	pep := &p
+	// Make a no-op emitter a DETECTABLE, loud choice rather than a silent
+	// fail-open. None is still accepted (an explicit test/demo opt-out), but the
+	// PEP now records that it is non-conformant and shouts once at construction.
+	if _, noop := p.Evidence.(evidence.Noop); noop {
+		pep.nonConformant = true
+		pep.logf("evidence: WARNING None emitter — this PEP records NO receipts and is NOT conformant with draft-03 (a receipt at every decision, including denials). Acceptable only as a deliberate test/demo/benchmark choice; a health endpoint SHOULD surface Conformant()==false.")
+	} else if d, ok := p.Evidence.(evidence.Durable); ok && !d.Durable() {
+		pep.logf("evidence: WARNING emitter reports Durable()==false — Emit may return before the receipt is durable, which voids the fail-closed guarantee that an ALLOW is served only once its receipt is durably recorded.")
+	}
+	return pep, nil
+}
+
+// Conformant reports whether this PEP emits real receipts. It is false only when
+// the PEP was built with evidence.None{}. A health endpoint SHOULD surface this
+// so a non-conformant deployment is visible rather than silent.
+func (p *PEP) Conformant() bool { return !p.nonConformant }
+
+// logf routes evidence alarms/warnings through the injected Logf, or the global
+// logger by default. A broken audit path must never be silent.
+func (p *PEP) logf(format string, args ...any) {
+	if p.Logf != nil {
+		p.Logf(format, args...)
+		return
+	}
+	log.Printf(format, args...)
 }
 
 // receiptFor maps a gate decision onto the draft's receipt vocabulary. PERMIT/
@@ -125,42 +159,107 @@ func (p *PEP) now() time.Time {
 }
 
 // Wrap returns middleware that enforces the gate on each request and forwards to
-// next only on ALLOW. Every decision (ALLOW or DENY) emits a signed log entry.
+// next only on ALLOW. Every decision on a PRESENTED token — allow and every
+// denial — emits a signed receipt and a transparency-log entry. A request that
+// presents no parseable token is refused (401) WITHOUT writing anchored evidence:
+// recording unauthenticated requests would let anyone drive unbounded signing and
+// chain growth, so that class is deferred behind admission control.
+//
+// Evidence posture (Option A, consistent with spt-txn-gateway):
+//   - ALLOW is served only if BOTH evidence artifacts are durable. The receipt
+//     (authority) is emitted FIRST, then the chain entry (ordering) is appended;
+//     if either fails the request is 503 and — crucially — NO signed ALLOW is
+//     left in the transparency chain for a request that was never served.
+//     (Previously the entry was appended BEFORE Emit and its error discarded, so
+//     an Emit failure left a signed ALLOW for a refused request.)
+//   - A DENY is the fail-safe outcome: its evidence is recorded best-effort and a
+//     failure is alarmed, but the denial still returns. Gating denials on durable
+//     evidence would let anyone who breaks the evidence path halt all denials too
+//     (a self-inflicted denial of service) without preventing any access a
+//     402/401 doesn't.
 func (p *PEP) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tok, ok := parseToken(r.Header.Get(HeaderToken))
+		raw := r.Header.Get(HeaderToken)
+		tok, ok := parseToken(raw)
 		if !ok {
+			// A request that never presented a parseable token has no authority to
+			// record and no binding to chain. Signing a receipt and appending an
+			// anchored chain entry here would let unauthenticated traffic drive
+			// unbounded signing and grow the transparency chain without limit — an
+			// amplification lever available to anyone. So this class is deliberately
+			// NOT written into the anchored evidence; it is still refused,
+			// fail-closed. Recording it belongs behind admission control (rate
+			// limiting) and is left for a deliberate follow-up, not defaulted on.
 			http.Error(w, "missing or malformed X-SPT-Txn authorization", http.StatusUnauthorized)
 			return
 		}
 		req := p.Requirements(r)
 		d := gate.Evaluate(p.Allowlist, req, tok, p.Policy, p.Spend, p.now())
+		rc := p.receiptFor(d, tokenFingerprint(raw))
 
-		// Two distinct artifacts, both emitted for every decision including
-		// denials. The log entry orders and chains the decision; the receipt
-		// records what authority governed it.
-		entry, _ := p.Log.Append(p.RKey, translog.Decision(d.Class), d.Binding, p.now().Unix())
-
-		// Evidence is a PRECONDITION of the decision, not a side effect. If the
-		// receipt cannot be durably recorded we have no proof of what we
-		// authorized, so an ALLOW becomes DENY/unavailable rather than
-		// proceeding unrecorded. Failing open here would mean the one decision
-		// nobody can audit is the one made while the evidence path was broken.
-		if _, err := p.Evidence.Emit(p.receiptFor(d, tokenFingerprint(r.Header.Get(HeaderToken)))); err != nil {
-			http.Error(w, "authorization unavailable: receipt not durably recorded", http.StatusServiceUnavailable)
+		if d.Class == gate.Allow {
+			// Receipt first (authority), then chain entry (ordering). Both must be
+			// durable before we serve; either failure is a 503, and no false ALLOW
+			// is ever written to the chain. NOTE for auditors: a receipt-first
+			// ordering means an Append failure can leave a durable PERMIT receipt
+			// with no matching chain entry and no service — that pairing is an
+			// evidence-incomplete signal (the request 503'd), not proof of service.
+			if _, err := p.Evidence.Emit(rc); err != nil {
+				http.Error(w, "authorization unavailable: receipt not durably recorded", http.StatusServiceUnavailable)
+				return
+			}
+			entry, err := p.Log.Append(p.RKey, mapDecision(d.Class), d.Binding, p.now().Unix())
+			if err != nil {
+				http.Error(w, "authorization unavailable: decision not durably logged", http.StatusServiceUnavailable)
+				return
+			}
+			w.Header().Set(HeaderLogEntry, logEntryTag(entry))
+			next.ServeHTTP(w, r)
 			return
 		}
 
-		switch d.Class {
-		case gate.Allow:
-			w.Header().Set(HeaderLogEntry, logEntryTag(entry))
-			next.ServeHTTP(w, r)
-		case gate.DenyUnavailable:
+		// DENY (violation or unavailable): safe outcome. Record both artifacts
+		// best-effort, alarm on failure, still deny.
+		p.recordDeny(rc, mapDecision(d.Class), d.Binding)
+		if d.Class == gate.DenyUnavailable {
 			http.Error(w, "authorization unavailable: "+d.Reason, http.StatusServiceUnavailable)
-		default: // DenyViolation
+		} else { // DenyViolation
 			http.Error(w, "authorization denied: "+d.Reason, http.StatusPaymentRequired)
 		}
 	})
+}
+
+// recordDeny emits the receipt and appends the transparency-log entry for a
+// denial. Both are best-effort and get the SAME failure posture — a failure is
+// alarmed but never changes the denial outcome. This removes the earlier
+// asymmetry where the log-append error was discarded while the receipt error was
+// fatal.
+func (p *PEP) recordDeny(rc evidence.Receipt, dec translog.Decision, binding [32]byte) {
+	if _, err := p.Evidence.Emit(rc); err != nil {
+		p.logf("EVIDENCE FAILURE (deny receipt, still denying): %v", err)
+	}
+	if _, err := p.Log.Append(p.RKey, dec, binding, p.now().Unix()); err != nil {
+		p.logf("EVIDENCE FAILURE (deny log entry, still denying): %v", err)
+	}
+}
+
+// mapDecision maps a gate decision class to the transparency-log decision
+// EXPLICITLY. gate.DecisionClass and translog.Decision happen to share numeric
+// values today, but that alignment is coincidental; a raw conversion would
+// silently mislabel permanent, anchored evidence if either enum is ever
+// reordered. The panic makes an unmapped class a build/test failure, not a
+// signed lie in the chain.
+func mapDecision(c gate.DecisionClass) translog.Decision {
+	switch c {
+	case gate.Allow:
+		return translog.Allow
+	case gate.DenyViolation:
+		return translog.DenyViolation
+	case gate.DenyUnavailable:
+		return translog.DenyUnavailable
+	default:
+		panic(fmt.Sprintf("gateway: unmapped gate decision class %d", int(c)))
+	}
 }
 
 func parseToken(h string) (gate.Token, bool) {
