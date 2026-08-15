@@ -7,9 +7,21 @@ resource server or MCP tool server. `go.mod` has no `require` block: this module
 depends on nothing but the Go standard library, and it is going to stay that way.
 
 ```go
-pep := &gateway.PEP{ /* ... */ }
+pep, err := gateway.NewPEP(gateway.PEP{
+    Name:     "my-resource-server", // identifies this PEP in every receipt
+    Evidence: myEmitter,            // or evidence.None{} to opt out, explicitly
+    /* Allowlist, Policy, Spend, Log, RKey, Requirements */
+})
+if err != nil {
+    return err // refuses to build without an evidence emitter
+}
 http.ListenAndServe(":8080", pep.Wrap(yourHandler))
 ```
+
+Construct through `NewPEP`, never as a bare struct literal: the literal skips
+the checks and leaves `Evidence` nil, and the first authorized request then
+panics. The constructor is where "a PEP without evidence is not a PEP" is
+enforced.
 
 Every request is authorized against a declared transaction, a signed Transaction
 Receipt and a transparency-log entry are recorded, and the request reaches the
