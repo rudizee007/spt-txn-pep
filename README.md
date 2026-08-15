@@ -67,6 +67,14 @@ runtime, so a deployment cannot quietly drift into non-conformance.
 
 Both enforcement points call the same `gate`. Neither holds policy logic of its own.
 
+**What the edge checks, and what it doesn't:**
+[`docs/PRESENTATION-SEAM.md`](docs/PRESENTATION-SEAM.md) states plainly which
+properties this module enforces (allowlist, binding, single use, freshness,
+evidence) and which belong to the engine's eight-step verifier (issuer
+signature, delegation chain, holder binding, revocation) — plus exactly what
+connecting the two would require. Read it before assuming a presented token is
+cryptographically verified here; today it is not.
+
 ## Why this is a separate module
 
 These packages were extracted from `spt-txn-x402-solana`, where adopting the
